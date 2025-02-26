@@ -130,41 +130,41 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 */
 void setup() {
   Serial.begin(9600);
-  Serial.println("Edge Impulse Inferencing Demo"); // Print immediately
+  // Serial.println("Edge Impulse Inferencing Demo"); // Print immediately
   if (ei_camera_init() == false) {
-    Serial.println("Failed to initialize Camera!");
+    // Serial.println("Failed to initialize Camera!");
   } else {
-    Serial.println("Camera initialized");
+    // Serial.println("Camera initialized");
   }
   delay(2000);
 
   // Add this at the end of setup():
   Serial.setTimeout(5000);  // Increase timeout
-  Serial.println("ESP32 Ready");  // Add startup message
+  // Serial.println("ESP32 Ready");  // Add startup message
 }
 
 void loop() {
-  Serial.println("Starting loop"); // Confirm loop entry
+  // Serial.println("Starting loop"); // Confirm loop entry
   if (ei_sleep(5) != EI_IMPULSE_OK) {
-    Serial.println("Sleep failed");
+    // Serial.println("Sleep failed");
     return;
   }
 
-  Serial.println("Allocating snapshot buffer");
+  // Serial.println("Allocating snapshot buffer");
   snapshot_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
   if (snapshot_buf == nullptr) {
-    Serial.println("ERR: Failed to allocate snapshot buffer!");
+    // Serial.println("ERR: Failed to allocate snapshot buffer!");
     return;
   }
 
-  Serial.println("Capturing image");
+  // Serial.println("Capturing image");
   if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
-    Serial.println("Failed to capture image");
+    // Serial.println("Failed to capture image");
     free(snapshot_buf);
     return;
   }
 
-  Serial.println("Running classifier");
+  // Serial.println("Running classifier");
   ei::signal_t signal;
   signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
   signal.get_data = &ei_camera_get_data;
@@ -172,7 +172,7 @@ void loop() {
   ei_impulse_result_t result = { 0 };
   EI_IMPULSE_ERROR err = run_classifier(&signal, &result, false);
   if (err != EI_IMPULSE_OK) {
-    Serial.println("ERR: Failed to run classifier");
+    // Serial.println("ERR: Failed to run classifier");
     free(snapshot_buf);
     return;
   }
@@ -186,9 +186,11 @@ void loop() {
     }
   }
 
-  Serial.print("Detected: ");
+  
   Serial.println(detected_label); // Should send "Rock", "Paper", etc.
+  delay(1000);
   Serial.flush();
+
   free(snapshot_buf);
 }
 
