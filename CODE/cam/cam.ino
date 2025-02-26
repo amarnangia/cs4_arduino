@@ -24,7 +24,7 @@
 // https://github.com/espressif/arduino-esp32/releases/tag/2.0.4
 
 /* Includes ---------------------------------------------------------------- */
-#include <rock_paper_sigma_inferencing.h>
+#include <rock_paper_scissor_sigma_inferencing.h>
 #include "edge-impulse-sdk/dsp/image/image.hpp"
 
 #include "esp_camera.h"
@@ -33,8 +33,7 @@
 // https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
 
 //#define CAMERA_MODEL_ESP_EYE // Has PSRAM
-//#define CAMERA_MODEL_AI_THINKER // Has PSRAM
-#define CAMERA_MODEL_ESP32_CAM_BOARD // Has PSRAM
+#define CAMERA_MODEL_AI_THINKER // Has PSRAM
 
 #if defined(CAMERA_MODEL_ESP_EYE)
 #define PWDN_GPIO_NUM    -1
@@ -73,35 +72,6 @@
 #define VSYNC_GPIO_NUM    25
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
-
-#elif defined(CAMERA_MODEL_ESP32_CAM_BOARD)
-// The 18 pin header on the board has Y5 and Y3 swapped
-#define USE_BOARD_HEADER 0
-#define PWDN_GPIO_NUM    32
-#define RESET_GPIO_NUM   33
-#define XCLK_GPIO_NUM    4
-#define SIOD_GPIO_NUM    18
-#define SIOC_GPIO_NUM    23
-
-#define Y9_GPIO_NUM 36
-#define Y8_GPIO_NUM 19
-#define Y7_GPIO_NUM 21
-#define Y6_GPIO_NUM 39
-#if USE_BOARD_HEADER
-#define Y5_GPIO_NUM 13
-#else
-#define Y5_GPIO_NUM 35
-#endif
-#define Y4_GPIO_NUM 14
-#if USE_BOARD_HEADER
-#define Y3_GPIO_NUM 35
-#else
-#define Y3_GPIO_NUM 13
-#endif
-#define Y2_GPIO_NUM    34
-#define VSYNC_GPIO_NUM 5
-#define HREF_GPIO_NUM  27
-#define PCLK_GPIO_NUM  25
 
 #else
 #error "Camera model not selected"
@@ -158,118 +128,68 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 /**
 * @brief      Arduino setup function
 */
-void setup()
-{
-    // put your setup code here, to run once:
-    Serial.begin(115200);
-    //comment out the below line to start inference immediately after upload
-    while (!Serial);
-    Serial.println("Edge Impulse Inferencing Demo");
-    if (ei_camera_init() == false) {
-        ei_printf("Failed to initialize Camera!\r\n");
-    }
-    else {
-        ei_printf("Camera initialized\r\n");
-    }
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Edge Impulse Inferencing Demo"); // Print immediately
+  if (ei_camera_init() == false) {
+    Serial.println("Failed to initialize Camera!");
+  } else {
+    Serial.println("Camera initialized");
+  }
+  delay(2000);
 
-    ei_printf("\nStarting continious inference in 2 seconds...\n");
-    ei_sleep(2000);
+  // Add this at the end of setup():
+  Serial.setTimeout(5000);  // Increase timeout
+  Serial.println("ESP32 Ready");  // Add startup message
 }
 
-/**
-* @brief      Get data and run inferencing
-*
-* @param[in]  debug  Get debug info if true
-*/
-void loop()
-{
+void loop() {
+  Serial.println("Starting loop"); // Confirm loop entry
+  if (ei_sleep(5) != EI_IMPULSE_OK) {
+    Serial.println("Sleep failed");
+    return;
+  }
 
-    // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
-    if (ei_sleep(5) != EI_IMPULSE_OK) {
-        return;
-    }
+  Serial.println("Allocating snapshot buffer");
+  snapshot_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+  if (snapshot_buf == nullptr) {
+    Serial.println("ERR: Failed to allocate snapshot buffer!");
+    return;
+  }
 
-    snapshot_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-
-    // check if allocation was successful
-    if(snapshot_buf == nullptr) {
-        ei_printf("ERR: Failed to allocate snapshot buffer!\n");
-        return;
-    }
-
-    ei::signal_t signal;
-    signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
-    signal.get_data = &ei_camera_get_data;
-
-    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
-        ei_printf("Failed to capture image\r\n");
-        free(snapshot_buf);
-        return;
-    }
-
-    // Run the classifier
-    ei_impulse_result_t result = { 0 };
-
-    EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
-    if (err != EI_IMPULSE_OK) {
-        ei_printf("ERR: Failed to run classifier (%d)\n", err);
-        return;
-    }
-
-    // print the predictions
-    ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-                result.timing.dsp, result.timing.classification, result.timing.anomaly);
-
-#if EI_CLASSIFIER_OBJECT_DETECTION == 1
-    ei_printf("Object detection bounding boxes:\r\n");
-    for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
-        if (bb.value == 0) {
-            continue;
-        }
-        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                bb.label,
-                bb.value,
-                bb.x,
-                bb.y,
-                bb.width,
-                bb.height);
-    }
-
-    // Print the prediction results (classification)
-#else
-    ei_printf("Predictions:\r\n");
-    for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-        ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
-        ei_printf("%.5f\r\n", result.classification[i].value);
-    }
-#endif
-
-    // Print anomaly result (if it exists)
-#if EI_CLASSIFIER_HAS_ANOMALY
-    ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
-#endif
-
-#if EI_CLASSIFIER_HAS_VISUAL_ANOMALY
-    ei_printf("Visual anomalies:\r\n");
-    for (uint32_t i = 0; i < result.visual_ad_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.visual_ad_grid_cells[i];
-        if (bb.value == 0) {
-            continue;
-        }
-        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                bb.label,
-                bb.value,
-                bb.x,
-                bb.y,
-                bb.width,
-                bb.height);
-    }
-#endif
-
-
+  Serial.println("Capturing image");
+  if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
+    Serial.println("Failed to capture image");
     free(snapshot_buf);
+    return;
+  }
 
+  Serial.println("Running classifier");
+  ei::signal_t signal;
+  signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
+  signal.get_data = &ei_camera_get_data;
+
+  ei_impulse_result_t result = { 0 };
+  EI_IMPULSE_ERROR err = run_classifier(&signal, &result, false);
+  if (err != EI_IMPULSE_OK) {
+    Serial.println("ERR: Failed to run classifier");
+    free(snapshot_buf);
+    return;
+  }
+
+  float max_confidence = 0.0;
+  const char* detected_label = "Unknown";
+  for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+    if (result.classification[i].value > max_confidence) {
+      max_confidence = result.classification[i].value;
+      detected_label = ei_classifier_inferencing_categories[i];
+    }
+  }
+
+  Serial.print("Detected: ");
+  Serial.println(detected_label); // Should send "Rock", "Paper", etc.
+  Serial.flush();
+  free(snapshot_buf);
 }
 
 /**
